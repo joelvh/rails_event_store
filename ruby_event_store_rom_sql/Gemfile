@@ -1,0 +1,6 @@
+source 'https://rubygems.org'
+gemspec
+
+gem 'ruby_event_store', path: '../ruby_event_store'
+gem 'rom-sql', '~> 2.4.0'
+gem 'rom-repository', '~> 2.0.2'
