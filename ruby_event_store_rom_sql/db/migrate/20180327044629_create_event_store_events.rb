@@ -8,6 +8,7 @@ require 'rom/sql'
     run 'CREATE EXTENSION pgcrypto;' if postgres
 
     create_table :event_store_events_in_streams do
+      # raise "create_table :event_store_events_in_streams"
       primary_key :id, type: :Bignum
 
       column :stream, String, null: false
@@ -26,6 +27,7 @@ require 'rom/sql'
     end
 
     create_table :event_store_events do
+      # raise "create_table :event_store_events"
       if postgres
         column :id, :uuid, default: Sequel.function(:gen_random_uuid), primary_key: true
       else

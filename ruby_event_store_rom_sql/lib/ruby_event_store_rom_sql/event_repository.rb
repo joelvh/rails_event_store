@@ -1,82 +1,77 @@
-# require 'activerecord-import'
+require 'ruby_event_store/repository'
 
 module RubyEventStoreRomSql
   class EventRepository
+    include RubyEventStore::Repository
 
-    POSITION_SHIFT = 1
-
-    def initialize(rom: RubyEventStoreRomSql.setup, mapper: RubyEventStore::Mappers::Default.new)
+    def initialize(rom: RubyEventStoreRomSql.env, mapper: RubyEventStore::Mappers::Default.new)
       @rom           = rom
-      @events        = rom.relations[:events] # ROM::Events.new(rom)
-      @event_streams = rom.relations[:event_streams] # ROM::EventStreams.new(rom)
+      @events        = ROM::EventsRepository.new(rom)
+      @event_streams = ROM::EventStreamsRepository.new(rom)
       @mapper        = mapper
-      @repo_reader   = EventRepositoryReader.new(mapper)
     end
 
-    def append_to_stream(events, stream_name, expected_version)
-      add_to_stream(normalize_to_array(events), stream_name, expected_version, true) do |event|
-        serialized_record = @mapper.event_to_serialized_record(event)
-        ROM::Event.new(
-          id:         serialized_record.event_id,
-          data:       serialized_record.data,
-          metadata:   serialized_record.metadata,
-          event_type: serialized_record.event_type
-        ).save!
+    def append_to_stream(event_ids, stream_name, expected_version)
+      add_to_stream(event_ids, stream_name, expected_version, true) do |event|
+        serialized_event = build_event_record(event)
+        puts "serialized_event: #{serialized_event.inspect}"
+        @events.create(serialized_event)
         event.event_id
       end
     end
 
     def link_to_stream(event_ids, stream_name, expected_version)
-      (normalize_to_array(event_ids) - ROM::Event.where(id: event_ids).pluck(:id)).each do |id|
+      @event_streams.detect_invalid_event_ids(normalize_to_array(event_ids)).each do |id|
         raise RubyEventStore::EventNotFound.new(id)
       end
-      add_to_stream(normalize_to_array(event_ids), stream_name, expected_version, nil) do |event_id|
+      event_ids = normalize_to_array(event_ids)
+      add_to_stream(event_ids, stream_name, expected_version, nil) do |event_id|
         event_id
       end
     end
 
     def delete_stream(stream_name)
-      ROM::EventStream.where(stream: stream_name).delete_all
+      @event_streams.delete_events_for(stream_name)
     end
 
     def has_event?(event_id)
-      @repo_reader.has_event?(event_id)
+      @events.has_event?(event_id)
     end
 
     def last_stream_event(stream_name)
-      @repo_reader.last_stream_event(stream_name)
+      deserialize @events.last_stream_event(stream_name)
     end
 
     def read_events_forward(stream_name, after_event_id, count)
-      @repo_reader.read_events_forward(stream_name, after_event_id, count)
+      deserialize @events.read_events_forward(stream_name, after_event_id, count)
     end
 
     def read_events_backward(stream_name, before_event_id, count)
-      @repo_reader.read_events_backward(stream_name, before_event_id, count)
+      deserialize @events.read_events_backward(stream_name, before_event_id, count)
     end
 
     def read_stream_events_forward(stream_name)
-      @repo_reader.read_stream_events_forward(stream_name)
+      deserialize @events.read_stream_events_forward(stream_name)
     end
 
     def read_stream_events_backward(stream_name)
-      @repo_reader.read_stream_events_backward(stream_name)
+      deserialize @events.read_stream_events_backward(stream_name)
     end
 
     def read_all_streams_forward(after_event_id, count)
-      @repo_reader.read_all_streams_forward(after_event_id, count)
+      deserialize @events.read_all_streams_forward(after_event_id, count)
     end
 
     def read_all_streams_backward(before_event_id, count)
-      @repo_reader.read_all_streams_backward(before_event_id, count)
+      deserialize @events.read_all_streams_backward(before_event_id, count)
     end
 
     def read_event(event_id)
-      @repo_reader.read_event(event_id)
+      deserialize @events.read_event(event_id)
     end
 
     def get_all_streams
-      @repo_reader.get_all_streams
+      @event_streams.get_all_streams
     end
 
     def add_metadata(event, key, value)
@@ -85,32 +80,33 @@ module RubyEventStoreRomSql
 
     private
 
-    def add_to_stream(collection, stream_name, expected_version, include_global, &to_event_id)
-      raise RubyEventStore::InvalidExpectedVersion if stream_name.eql?(RubyEventStore::GLOBAL_STREAM) && !expected_version.equal?(:any)
-
-      expected_version = normalize_expected_version(expected_version, stream_name)
-
-      @event_streams.transaction(savepoint: true) do
-        in_stream = collection.flat_map.with_index do |element, index|
+    def append(event_ids, stream_name, expected_version, include_global, &to_event_id)
+      created_at = Time.now.utc
+      # @event_streams.transaction(savepoint: true) do
+        in_stream = event_ids.flat_map.with_index do |event_id, index|
           position = compute_position(expected_version, index)
-          event_id = to_event_id.call(element)
+          event_id = to_event_id.call(event_id)
+
           collection = []
-          collection.unshift({
+          collection.unshift(
             stream: RubyEventStore::GLOBAL_STREAM,
             position: nil,
-            event_id: event_id
-          }) if include_global
-          collection.unshift({
+            event_id: event_id,
+            created_at: created_at
+          ) if include_global
+
+          collection.unshift(
             stream:   stream_name,
             position: position,
-            event_id: event_id
-          }) unless stream_name.eql?(RubyEventStore::GLOBAL_STREAM)
+            event_id: event_id,
+            created_at: created_at
+          ) unless stream_name.eql?(RubyEventStore::GLOBAL_STREAM)
+
           collection
         end
-        # TODO: Replace with Sequel::Dataset#import(columns, values, opts)
-        # See: http://www.rubydoc.info/github/jeremyevans/sequel/Sequel%2FDataset%3Aimport
-        ROM::EventStream.import(in_stream)
-      end
+
+        @event_streams.import(in_stream)
+      # end
       self
     # rescue ActiveRecord::RecordNotUnique => e
     rescue Sequel::UniqueConstraintViolation => e
@@ -118,40 +114,32 @@ module RubyEventStoreRomSql
     end
 
     def raise_error(e)
-      if detect_index_violated(e.message)
-        raise RubyEventStore::EventDuplicatedInStream
-      end
+      raise RubyEventStore::EventDuplicatedInStream if detect_index_violated(e.message)
       raise RubyEventStore::WrongExpectedEventVersion
     end
 
-    def compute_position(expected_version, index)
-      unless expected_version.equal?(:any)
-        expected_version + index + POSITION_SHIFT
-      end
-    end
-
-    def normalize_expected_version(expected_version, stream_name)
-      case expected_version
-        when Integer, :any
-          expected_version
-        when :none
-          -1
-        when :auto
-          eis = ROM::EventStream.where(stream: stream_name).order("position DESC").first
-          (eis && eis.position) || -1
-        else
-          raise RubyEventStore::InvalidExpectedVersion
-      end
+    def last_position_for(stream_name)
+      @event_streams.last_position_for(stream_name)
     end
 
     def detect_index_violated(message)
       IndexViolationDetector.new.detect(message)
     end
 
-    def normalize_to_array(events)
-      return events if events.is_a?(Enumerable)
-      [events]
+    def build_event_record(event)
+      serialized_record = @mapper.event_to_serialized_record(event)
+      {
+        id:         serialized_record.event_id,
+        data:       serialized_record.data,
+        metadata:   serialized_record.metadata,
+        event_type: serialized_record.event_type,
+        created_at: Time.now.utc
+      }
+    end
+
+    def deserialize(events)
+      mapped = Array(events).map(&@mapper.method(:serialized_record_to_event))
+      events.is_a?(Enumerable) ? mapped : mapped.first
     end
   end
-
 end

@@ -1,36 +1,41 @@
-require 'rom/sql'
 require 'ruby_event_store_rom_sql/event_repository'
-require 'ruby_event_store_rom_sql/event_repository_reader'
 require 'ruby_event_store_rom_sql/index_violation_detector'
 require 'ruby_event_store_rom_sql/version'
+require 'rom/sql'
+require 'rom-repository'
 
 module RubyEventStoreRomSql
   class << self
+    # Set to a default instance
+    attr_accessor :env
+
     def configure(database_uri = ENV['DATABASE_URL'], &block)
-      ::ROM.container(:sql, database_uri, &block)
+      if database_uri.is_a?(::ROM::Configuration)
+        # Call config block manually
+        ::ROM.container(database_uri.tap(&block), &block)
+      else
+        ::ROM.container(:sql, database_uri, &block)
+      end
     end
 
-    def setup(*args)
+    def setup(*args, &block)
       configure(*args) do |config|
-        require 'ruby_event_store_rom_sql/rom'
+        apply_defaults(config)
 
-        config.register_relation(ROM::Events)
-        config.register_relation(ROM::EventStreams)
-        # config.relation(:events) do
-        #   schema(:event_store_events, as: :events)
-        #   auto_struct true
-        # end
-
-        # config.relation(:event_streams) do
-        #   schema(:event_store_events_in_streams, as: :event_streams) do
-        #     associations do
-        #       belongs_to :event
-        #     end
-        #   end
-
-        #   auto_struct true
-        # end
+        block.call(config) if block
       end
+    end
+
+    # ROM::Configuration
+    def apply_defaults(config)
+      require 'ruby_event_store_rom_sql/rom'
+
+      config.register_relation(ROM::Events)
+      config.register_relation(ROM::EventStreams)
+    end
+
+    def run_migrations_for(gateway)
+      gateway.run_migrations(path: File.expand_path('../../db/migrate', File.dirname(__FILE__)))
     end
   end
 end

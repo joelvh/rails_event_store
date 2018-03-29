@@ -217,7 +217,7 @@ module RubyEventStoreRomSql
           count += 1
         end
       }
-      ActiveSupport::Notifications.subscribed(counter_f, "sql.active_record", &block)
+      # ActiveSupport::Notifications.subscribed(counter_f, "sql.active_record", &block)
       count
     end
 
@@ -226,7 +226,7 @@ module RubyEventStoreRomSql
       counter_f = ->(_name, _started, _finished, _unique_id, payload) {
         count +=1 if match === payload[:sql]
       }
-      ActiveSupport::Notifications.subscribed(counter_f, "sql.active_record", &block)
+      # ActiveSupport::Notifications.subscribed(counter_f, "sql.active_record", &block)
       expect(count).to eq(1)
     end
   end
