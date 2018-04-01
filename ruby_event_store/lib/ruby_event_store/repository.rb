@@ -3,8 +3,8 @@ require 'thread'
 
 module RubyEventStore
   module Repository
-    POSITION_SHIFT = 1
-    POSITION_DEFAULT = -1
+    POSITION_SHIFT = 1.freeze
+    POSITION_DEFAULT = -1.freeze
 
     def append_to_stream(events, stream_name, expected_version)
       add_to_stream(events, stream_name, expected_version, true)
