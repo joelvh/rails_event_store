@@ -36,9 +36,6 @@ module RubyEventStore
     end
 
     def compute_position(expected_version, offset = 0)
-      puts "expected_version: #{expected_version.inspect}"
-      puts "offset: #{offset.inspect}"
-      puts "POSITION_SHIFT: #{POSITION_SHIFT.inspect}"
       unless expected_version.equal?(:any)
         expected_version + offset + POSITION_SHIFT
       end

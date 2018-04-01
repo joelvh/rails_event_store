@@ -13,9 +13,7 @@ module RubyEventStoreRomSql
 
     def append_to_stream(event_ids, stream_name, expected_version)
       add_to_stream(event_ids, stream_name, expected_version, true) do |event|
-        serialized_event = build_event_record(event)
-        puts "serialized_event: #{serialized_event.inspect}"
-        @events.create(serialized_event)
+        @events.create(build_event_record(event))
         event.event_id
       end
     end
