@@ -29,14 +29,16 @@ instead:
         validate_stream_is_empty(stream) if expected_version.none?
         validate_expected_version_number(expected_version, stream) if Integer === expected_version.version
 
+        current_event_id = nil
         normalize_to_array(events).each do |event|
+          current_event_id = event.event_id
           data = event.to_h
           data[:stream] = stream.name
           LegacyEvent.create!(data)
         end
         self
       rescue ActiveRecord::RecordNotUnique
-        raise RubyEventStore::EventDuplicatedInStream
+        raise RubyEventStore::EventDuplicatedInStream.new(current_event_id)
       end
 
       def link_to_stream(_event_ids, _stream, _expected_version)

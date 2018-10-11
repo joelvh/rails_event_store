@@ -901,7 +901,7 @@ module RubyEventStore
           stream,
           version_0
         )
-      end.to raise_error(EventDuplicatedInStream)
+      end.to raise_error(EventDuplicatedInStream, "a1b49edb-7636-416f-874a-88f94b859bef")
     end
 
     it 'does not allow same event twice' do
@@ -916,7 +916,7 @@ module RubyEventStore
           stream_other,
           version_none
         )
-      end.to raise_error(EventDuplicatedInStream)
+      end.to raise_error(EventDuplicatedInStream, "a1b49edb-7636-416f-874a-88f94b859bef")
     end
 
     it 'does not allow linking same event twice in a stream' do
@@ -928,7 +928,7 @@ module RubyEventStore
       ).link_to_stream("a1b49edb-7636-416f-874a-88f94b859bef", stream_flow, version_none)
       expect do
         repository.link_to_stream("a1b49edb-7636-416f-874a-88f94b859bef", stream_flow, version_0)
-      end.to raise_error(EventDuplicatedInStream)
+      end.to raise_error(EventDuplicatedInStream, "a1b49edb-7636-416f-874a-88f94b859bef")
     end
 
     it 'allows appending to GLOBAL_STREAM explicitly' do
