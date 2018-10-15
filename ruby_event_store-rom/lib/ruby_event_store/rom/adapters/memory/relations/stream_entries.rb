@@ -26,7 +26,7 @@ module RubyEventStore
           def create_changeset(tuples)
             changeset(Changesets::CreateStreamEntries, tuples)
           end
-  
+
           def offset(num)
             num.zero? ? self : new(dataset.slice(num..-1) || [])
           end
@@ -65,7 +65,7 @@ module RubyEventStore
           end
 
           DIRECTION_MAP = {
-            forward:  [false,  :>],
+            forward:  [false, :>],
             backward: [true, :<]
           }.freeze
 
@@ -85,7 +85,7 @@ module RubyEventStore
             query
           end
 
-        private
+          private
 
           # Verifies uniqueness of [stream, event_id] and [stream, position]
           def verify_uniquness!(tuple)
